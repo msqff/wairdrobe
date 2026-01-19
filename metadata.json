@@ -1,0 +1,7 @@
+{
+  "name": "wAIrdrobe",
+  "description": "An intelligent wardrobe assistant that uses AI to automatically categorise your clothes from photos. Track what you wear, get style suggestions, and rediscover forgotten items in your closet.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
