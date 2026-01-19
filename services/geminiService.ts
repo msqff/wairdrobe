@@ -2,11 +2,13 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Garment } from '../types';
 
-if (!process.env.API_KEY) {
-    console.warn("API_KEY environment variable not set. AI features will not work.");
+const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+
+if (!API_KEY) {
+    console.warn("VITE_GEMINI_API_KEY is not set. AI features will not work.");
 }
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+const ai = new GoogleGenAI({ apiKey: API_KEY });
 
 function fileToGenerativePart(base64: string, mimeType: string) {
   return {
