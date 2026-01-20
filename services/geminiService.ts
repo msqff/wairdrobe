@@ -2,7 +2,24 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Garment } from '../types';
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// This helper function finds the key whether you are in AI Studio or Vercel
+const getApiKey = () => {
+  try {
+    // 1. Try Vercel/Vite (Live App)
+    return (import.meta as any).env.VITE_GEMINI_API_KEY;
+  } catch (e) {
+    // 2. Fallback to AI Studio Environment (Preview)
+    return (process as any).env.API_KEY;
+  }
+};
+
+const API_KEY = getApiKey();
+
+if (!API_KEY) {
+    console.warn("API Key not found. AI features will not work.");
+}
+
+const ai = new GoogleGenAI({ apiKey: API_KEY });
 
 function fileToGenerativePart(base64: string, mimeType: string) {
   return {
