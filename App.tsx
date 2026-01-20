@@ -7,6 +7,7 @@ import WardrobeGrid from './components/WardrobeGrid';
 import AddGarmentModal from './components/AddGarmentModal';
 import AIStylistModal from './components/AIStylistModal';
 import EditGarmentModal from './components/EditGarmentModal';
+import WardrobeTableModal from './components/WardrobeTableModal';
 import Spinner from './components/Spinner';
 import CategoryCard from './components/CategoryCard';
 import GarmentCard from './components/GarmentCard';
@@ -17,6 +18,7 @@ const App: React.FC = () => {
   const { wardrobe, setWardrobe, isLoading, isSaving, exportData, importData } = usePersistentWardrobe();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isStylistOpen, setIsStylistOpen] = useState(false);
+  const [isTableOpen, setIsTableOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   
   // Filter States
@@ -70,7 +72,7 @@ const App: React.FC = () => {
              const { lastWorn, ...rest } = garment;
              return rest as Garment;
           }
-          return { ...garment, lastWorn: today };
+          return { ...garment, lastWorn: today, isNewPurchase: false };
         }
         return garment;
       })
@@ -185,6 +187,16 @@ const App: React.FC = () => {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
                         </svg>
                         <span>Add Garment</span>
+                    </button>
+
+                    <button
+                        onClick={() => setIsTableOpen(true)}
+                        className="flex-1 md:flex-none md:min-w-[200px] bg-white text-stone-900 border-2 border-stone-200 text-lg font-medium py-4 px-6 rounded-xl shadow-sm hover:border-stone-900 hover:shadow-md transition-all duration-300 flex items-center justify-center space-x-2"
+                    >
+                         <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                        <span>Full Catalogue</span>
                     </button>
 
                     <button
@@ -422,6 +434,17 @@ const App: React.FC = () => {
         isOpen={!!editingGarment}
         onClose={() => setEditingGarment(null)}
         onSave={updateGarment}
+      />
+
+      <WardrobeTableModal
+        isOpen={isTableOpen}
+        onClose={() => setIsTableOpen(false)}
+        wardrobe={wardrobe}
+        onEdit={(g) => {
+            setEditingGarment(g);
+            setIsTableOpen(false); // Optional: close table when editing? Or keep open? Let's close for focus.
+        }}
+        onDelete={requestDelete}
       />
 
       {/* Custom Delete Confirmation Modal */}

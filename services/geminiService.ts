@@ -2,13 +2,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Garment } from '../types';
 
-const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-
-if (!API_KEY) {
-    console.warn("VITE_GEMINI_API_KEY is not set. AI features will not work.");
-}
-
-const ai = new GoogleGenAI({ apiKey: API_KEY });
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 function fileToGenerativePart(base64: string, mimeType: string) {
   return {
@@ -225,7 +219,13 @@ export async function visualizeOutfit(garments: Garment[]): Promise<string> {
     });
 
     const description = garments.map(g => `${g.type} (${g.name})`).join(', ');
-    const prompt = `Generate a realistic fashion image of a mannequin wearing this outfit: ${description}. Combine these specific items onto the mannequin. Clean neutral background.`;
+    
+    // Updated prompt to be strict about excluded items
+    const prompt = `Generate a realistic fashion image of a mannequin wearing ONLY these specific items: ${description}. 
+    Combine these specific items onto the mannequin. 
+    CRITICAL: Do NOT add any extra garments, shoes, bags, hats, or accessories that are not provided in the images. 
+    If shoes are not in the list, the mannequin must be barefoot. 
+    Clean neutral background.`;
 
     const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash-image',
