@@ -195,6 +195,48 @@ export async function generateOutfit(
     return JSON.parse(response.text.trim()) as OutfitSuggestion;
 }
 
+export async function completeOutfit(
+    wardrobe: Garment[],
+    currentItems: Garment[],
+    occasion: string,
+    weather: string
+): Promise<OutfitSuggestion> {
+    // Filter out items already selected to avoid duplicates in the pool
+    const availableItems = wardrobe.filter(g => !currentItems.find(c => c.id === g.id));
+    const availableContext = getLightweightContext(availableItems);
+    const currentContext = getLightweightContext(currentItems);
+
+    const prompt = `Act as a personal stylist. I have selected these items: ${JSON.stringify(currentContext)}.
+    Please complete the look by selecting matching items from the remaining wardrobe: ${JSON.stringify(availableContext)}.
+    
+    Occasion: ${occasion}, Weather: ${weather}.
+    
+    Rules:
+    1. KEEP the items I already selected (include their IDs in the final list).
+    2. Select complementary items (e.g., if I have a top, find bottoms and shoes) from the wardrobe.
+    3. Return the COMPLETE list of item IDs (both my original ones and your new suggestions).
+    4. Give the outfit a creative name.`;
+
+    const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: { parts: [{ text: prompt }] },
+        config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                    outfitName: { type: Type.STRING },
+                    itemIds: { type: Type.ARRAY, items: { type: Type.STRING } },
+                    reasoning: { type: Type.STRING }
+                },
+                required: ["outfitName", "itemIds", "reasoning"]
+            }
+        }
+    });
+
+    return JSON.parse(response.text.trim()) as OutfitSuggestion;
+}
+
 export async function getShoppingSuggestions(wardrobe: Garment[]): Promise<ShoppingItem[]> {
     const context = getLightweightContext(wardrobe);
     const prompt = `Analyze this wardrobe for gaps: ${JSON.stringify(context)}. Suggest 3 specific items to maximize versatility.`;

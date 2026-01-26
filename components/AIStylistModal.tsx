@@ -1,9 +1,8 @@
 
 import React, { useState } from 'react';
 import { Garment } from '../types';
-import { getWardrobeAnalysis, generateOutfit, getShoppingSuggestions, visualizeOutfit, WardrobeInsights, OutfitSuggestion, ShoppingItem } from '../services/geminiService';
+import { getWardrobeAnalysis, generateOutfit, completeOutfit, getShoppingSuggestions, visualizeOutfit, WardrobeInsights, OutfitSuggestion, ShoppingItem } from '../services/geminiService';
 import Spinner from './Spinner';
-import GarmentCard from './GarmentCard';
 
 interface AIStylistModalProps {
   isOpen: boolean;
@@ -36,7 +35,6 @@ const AIStylistModal: React.FC<AIStylistModalProps> = ({ isOpen, onClose, wardro
 
   // Handlers
   const handleGenerateInsights = async () => {
-    // Check purely for existence now, let the AI handle the "bluntness" about quantity
     if (wardrobe.length === 0) {
         alert("Please add at least one item to get insights!");
         return;
@@ -54,15 +52,19 @@ const AIStylistModal: React.FC<AIStylistModalProps> = ({ isOpen, onClose, wardro
   };
 
   const handleCreateOutfit = async () => {
-    if (wardrobe.length < 2) return;
+    if (wardrobe.length < 2) {
+        alert("You need at least a few items to generate an outfit.");
+        return;
+    }
     setIsLoading(true);
     setGeneratedOutfit(null);
-    setVisualizedImage(null); // Reset visualization when new outfit is created
+    setVisualizedImage(null);
     try {
         const result = await generateOutfit(wardrobe, occasion || "Casual daily wear", weather, focus);
         setGeneratedOutfit(result);
     } catch (e) {
         console.error(e);
+        alert("Failed to generate outfit.");
     } finally {
         setIsLoading(false);
     }
@@ -70,26 +72,52 @@ const AIStylistModal: React.FC<AIStylistModalProps> = ({ isOpen, onClose, wardro
 
   const handleStartManualOutfit = () => {
       setGeneratedOutfit({
-          outfitName: "Custom Outfit",
-          reasoning: "Manually curated style.",
+          outfitName: "Custom Look",
+          reasoning: "Select items to build your look.",
           itemIds: []
       });
       setIsItemPickerOpen(true);
       setVisualizedImage(null);
   };
 
+  const handleClearOutfit = () => {
+      setGeneratedOutfit(null);
+      setVisualizedImage(null);
+  };
+
+  const handleCompleteLook = async () => {
+      if (!generatedOutfit || generatedOutfit.itemIds.length === 0) {
+          alert("Please select at least one item first.");
+          return;
+      }
+      
+      setIsLoading(true);
+      setVisualizedImage(null);
+      
+      try {
+          const currentItems = getOutfitItems();
+          const result = await completeOutfit(wardrobe, currentItems, occasion || "Casual", weather);
+          setGeneratedOutfit(result);
+      } catch (e) {
+          console.error(e);
+          alert("Failed to complete the outfit.");
+      } finally {
+          setIsLoading(false);
+      }
+  };
+
   const handleAddItemToOutfit = (garmentId: string) => {
     setGeneratedOutfit(prev => {
         if (!prev) {
             return {
-                outfitName: "Custom Outfit",
+                outfitName: "Custom Look",
                 reasoning: "Manually curated style.",
                 itemIds: [garmentId]
             };
         }
         if (prev.itemIds.includes(garmentId)) return prev;
-        // Reset visualization if outfit changes
-        setVisualizedImage(null);
+        
+        setVisualizedImage(null); // Reset visualization
         return {
             ...prev,
             itemIds: [...prev.itemIds, garmentId]
@@ -101,8 +129,7 @@ const AIStylistModal: React.FC<AIStylistModalProps> = ({ isOpen, onClose, wardro
   const handleRemoveFromOutfit = (garmentId: string) => {
     setGeneratedOutfit(prev => {
         if (!prev) return null;
-        // Reset visualization if outfit changes
-        setVisualizedImage(null);
+        setVisualizedImage(null); // Reset visualization
         return {
             ...prev,
             itemIds: prev.itemIds.filter(id => id !== garmentId)
@@ -132,6 +159,7 @@ const AIStylistModal: React.FC<AIStylistModalProps> = ({ isOpen, onClose, wardro
         setShoppingList(result);
     } catch (e) {
         console.error(e);
+        alert("Failed to get shopping suggestions.");
     } finally {
         setIsLoading(false);
     }
@@ -153,7 +181,7 @@ const AIStylistModal: React.FC<AIStylistModalProps> = ({ isOpen, onClose, wardro
   return (
     <div className="fixed inset-0 bg-stone-900/40 backdrop-blur-sm z-50 flex justify-center items-center p-4 md:p-6" onClick={onClose}>
       <div 
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl h-[90vh] md:h-[80vh] flex flex-col overflow-hidden relative" 
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl h-[90vh] md:h-[85vh] flex flex-col overflow-hidden relative" 
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
@@ -201,13 +229,6 @@ const AIStylistModal: React.FC<AIStylistModalProps> = ({ isOpen, onClose, wardro
                                         <p className="text-sm font-bold text-stone-800 truncate">{g.name || g.type}</p>
                                         <p className="text-xs text-stone-500">{g.category}</p>
                                     </div>
-                                    {isSelected && (
-                                        <div className="absolute top-2 right-2 bg-indigo-500 text-white rounded-full p-1">
-                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                            </svg>
-                                        </div>
-                                    )}
                                 </button>
                             );
                         })}
@@ -254,7 +275,7 @@ const AIStylistModal: React.FC<AIStylistModalProps> = ({ isOpen, onClose, wardro
             <div className="flex-grow overflow-y-auto p-6 bg-white relative">
                 
                 {isLoading && (
-                    <div className="absolute inset-0 bg-white/80 z-20 flex flex-col justify-center items-center">
+                    <div className="absolute inset-0 bg-white/80 z-20 flex flex-col justify-center items-center backdrop-blur-sm">
                         <Spinner className="text-indigo-600 h-10 w-10 mb-4" />
                         <p className="text-stone-600 font-medium animate-pulse">Consulting your AI Stylist...</p>
                     </div>
@@ -306,13 +327,9 @@ const AIStylistModal: React.FC<AIStylistModalProps> = ({ isOpen, onClose, wardro
                                     </div>
                                 </div>
 
-                                <div className="bg-indigo-50/50 p-6 rounded-2xl border border-indigo-100">
-                                    <h4 className="font-bold text-indigo-900 mb-2">AI Analysis</h4>
-                                    <p className="text-stone-700 leading-relaxed">{insights.description}</p>
-                                </div>
-                                
-                                <div className="mt-6 text-center">
-                                     <button onClick={handleGenerateInsights} className="text-sm text-indigo-600 font-medium hover:underline">Refresh Analysis</button>
+                                <div className="bg-indigo-50 p-6 rounded-2xl border border-indigo-100">
+                                    <h4 className="font-bold text-indigo-900 mb-2">Editor's Note</h4>
+                                    <p className="text-indigo-800 italic">"{insights.description}"</p>
                                 </div>
                             </div>
                         )}
@@ -321,202 +338,221 @@ const AIStylistModal: React.FC<AIStylistModalProps> = ({ isOpen, onClose, wardro
 
                 {/* TAB 2: OUTFIT CREATOR */}
                 {activeTab === 'outfit' && (
-                    <div className="space-y-8 animate-fadeIn pb-10">
-                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div>
-                                <label className="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-2">Occasion</label>
-                                <input 
-                                    type="text" 
-                                    value={occasion} 
-                                    onChange={e => setOccasion(e.target.value)} 
-                                    placeholder="e.g. Dinner Date, Work" 
-                                    className="w-full border border-stone-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none bg-white text-stone-900"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-2">Weather</label>
-                                <select 
-                                    value={weather} 
-                                    onChange={e => setWeather(e.target.value)}
-                                    className="w-full border border-stone-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
-                                >
-                                    <option>Sunny</option>
-                                    <option>Rainy</option>
-                                    <option>Cold / Winter</option>
-                                    <option>Hot / Summer</option>
-                                    <option>Windy</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-2">Focus</label>
-                                <select 
-                                    value={focus} 
-                                    onChange={e => setFocus(e.target.value)}
-                                    className="w-full border border-stone-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
-                                >
-                                    <option value="Mix & Match">Mix & Match</option>
-                                    <option value="Neglected">Use Neglected Items</option>
-                                    <option value="New">Style New Items</option>
-                                    <option value="Comfort">Comfort</option>
-                                    <option value="Bold">Bold / Statement</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <div className="flex flex-col sm:flex-row gap-4">
-                             <button 
-                                onClick={handleCreateOutfit}
-                                className="flex-1 bg-stone-900 text-white py-4 rounded-xl font-bold shadow-lg hover:bg-stone-800 transition-all flex items-center justify-center space-x-2"
-                            >
-                                <span>✨ Create Outfit</span>
-                            </button>
-                             {!generatedOutfit && (
-                                <button 
-                                    onClick={handleStartManualOutfit}
-                                    className="flex-1 bg-white border-2 border-stone-200 text-stone-600 py-4 rounded-xl font-bold shadow-sm hover:border-stone-400 hover:text-stone-800 transition-all flex items-center justify-center space-x-2"
-                                >
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                                    </svg>
-                                    <span>Start from scratch</span>
-                                </button>
-                             )}
-                        </div>
-
-                        {generatedOutfit && (
-                            <div className="pt-4 animate-slideIn">
+                    <div className="space-y-8 animate-fadeIn pb-6">
+                        {!generatedOutfit ? (
+                            <div className="max-w-xl mx-auto">
                                 <div className="text-center mb-8">
-                                    <h3 className="text-2xl font-serif font-bold text-stone-900 mb-2">{generatedOutfit.outfitName}</h3>
-                                    <p className="text-stone-500 max-w-lg mx-auto italic">"{generatedOutfit.reasoning}"</p>
+                                    <div className="bg-purple-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4">
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+                                        </svg>
+                                    </div>
+                                    <h3 className="text-xl font-serif font-bold text-stone-900 mb-2">Style An Outfit</h3>
+                                    <p className="text-stone-500">Let AI create a look for you, or start building one manually.</p>
                                 </div>
-                                
-                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-                                    {getOutfitItems().map(item => (
-                                        <div key={item.id} className="relative group">
-                                            <GarmentCard garment={item} onMarkAsWorn={() => {}} />
-                                            <button 
-                                                onClick={() => handleRemoveFromOutfit(item.id)}
-                                                className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full shadow-md opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600 z-10"
-                                                title="Remove item"
+
+                                <div className="space-y-4 bg-stone-50 p-6 rounded-2xl border border-stone-100 mb-8">
+                                    <div>
+                                        <label className="block text-sm font-medium text-stone-700 mb-1">Occasion</label>
+                                        <input 
+                                            type="text" 
+                                            value={occasion} 
+                                            onChange={e => setOccasion(e.target.value)} 
+                                            placeholder="e.g. Date night, Office, Weekend brunch"
+                                            className="w-full border border-stone-200 rounded-xl px-4 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white text-stone-800"
+                                        />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-stone-700 mb-1">Weather</label>
+                                            <select 
+                                                value={weather} 
+                                                onChange={e => setWeather(e.target.value)}
+                                                className="w-full border border-stone-200 rounded-xl px-4 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white"
                                             >
-                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                                                </svg>
-                                            </button>
+                                                <option>Sunny</option>
+                                                <option>Rainy</option>
+                                                <option>Cold</option>
+                                                <option>Hot</option>
+                                                <option>Windy</option>
+                                                <option>Snow</option>
+                                            </select>
                                         </div>
-                                    ))}
-                                    {/* Add Item Button in Grid */}
+                                        <div>
+                                            <label className="block text-sm font-medium text-stone-700 mb-1">Vibe</label>
+                                            <select 
+                                                value={focus} 
+                                                onChange={e => setFocus(e.target.value)}
+                                                className="w-full border border-stone-200 rounded-xl px-4 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white"
+                                            >
+                                                <option>Comfort</option>
+                                                <option>Style</option>
+                                                <option>Professional</option>
+                                                <option>Bold</option>
+                                                <option>Minimalist</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="flex gap-4">
                                     <button 
-                                        onClick={() => setIsItemPickerOpen(true)}
-                                        className="flex flex-col items-center justify-center aspect-[4/5] bg-stone-50 border-2 border-dashed border-stone-300 rounded-2xl hover:bg-stone-100 hover:border-stone-400 transition-all group"
+                                        onClick={handleCreateOutfit}
+                                        className="flex-1 bg-indigo-600 text-white py-3 rounded-xl font-semibold shadow-lg hover:bg-indigo-700 transition-all"
                                     >
-                                        <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center shadow-sm mb-2 group-hover:scale-110 transition-transform">
-                                             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-stone-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-                                            </svg>
-                                        </div>
-                                        <span className="text-sm font-medium text-stone-500">Add Item</span>
+                                        Generate for Me
+                                    </button>
+                                    <button 
+                                        onClick={handleStartManualOutfit}
+                                        className="flex-1 bg-white border-2 border-stone-200 text-stone-700 py-3 rounded-xl font-semibold hover:border-stone-900 hover:text-stone-900 transition-all"
+                                    >
+                                        Create Manually
                                     </button>
                                 </div>
-                                
-                                {/* Visualization Section */}
-                                <div className="border-t border-stone-100 pt-8 flex flex-col items-center">
-                                    {!visualizedImage ? (
+                            </div>
+                        ) : (
+                            <div className="animate-slideIn">
+                                <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+                                    <div className="w-full md:w-auto flex-1 min-w-0">
+                                        <div className="flex flex-wrap items-center gap-3 mb-1">
+                                            <h3 className="text-2xl font-serif font-bold text-stone-900 break-words leading-tight">{generatedOutfit.outfitName}</h3>
+                                            <button 
+                                                onClick={handleClearOutfit}
+                                                className="flex-shrink-0 text-xs font-semibold text-red-500 bg-red-50 hover:bg-red-100 px-2 py-1 rounded-full transition-colors whitespace-nowrap"
+                                            >
+                                                Clear / Start Over
+                                            </button>
+                                        </div>
+                                        <p className="text-stone-500 text-sm max-w-2xl break-words">{generatedOutfit.reasoning}</p>
+                                    </div>
+                                    
+                                    <div className="flex flex-wrap gap-2 w-full md:w-auto shrink-0">
+                                        {/* Show 'Complete with AI' if we have items but want suggestions */}
+                                        {generatedOutfit.itemIds.length > 0 && (
+                                            <button 
+                                                onClick={handleCompleteLook}
+                                                className="flex-1 md:flex-none px-4 py-2 bg-purple-50 text-purple-700 font-semibold rounded-xl hover:bg-purple-100 transition-colors text-sm flex items-center justify-center gap-2 whitespace-nowrap"
+                                                title="Let AI suggest complementary items for what you've picked"
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                                                </svg>
+                                                Complete with AI
+                                            </button>
+                                        )}
+                                        
                                         <button 
                                             onClick={handleVisualizeOutfit}
                                             disabled={isVisualizing || generatedOutfit.itemIds.length === 0}
-                                            className={`
-                                                flex items-center space-x-2 px-6 py-3 rounded-full border-2 
-                                                transition-all font-semibold
-                                                ${isVisualizing 
-                                                    ? 'border-indigo-100 bg-indigo-50 text-indigo-400 cursor-wait' 
-                                                    : generatedOutfit.itemIds.length === 0
-                                                        ? 'border-stone-200 text-stone-300 cursor-not-allowed'
-                                                        : 'border-indigo-600 text-indigo-600 hover:bg-indigo-50'}
-                                            `}
+                                            className={`flex-1 md:flex-none px-4 py-2 bg-stone-900 text-white font-semibold rounded-xl hover:bg-stone-800 transition-colors text-sm flex items-center justify-center gap-2 whitespace-nowrap ${isVisualizing ? 'opacity-70 cursor-wait' : ''}`}
                                         >
-                                            {isVisualizing ? (
-                                                <>
-                                                    <Spinner className="w-4 h-4 text-indigo-400" />
-                                                    <span>Designing look...</span>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                                                    </svg>
-                                                    <span>Visualize on Mannequin</span>
-                                                </>
-                                            )}
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                            </svg>
+                                            {isVisualizing ? 'Dreaming...' : 'Visualize'}
                                         </button>
-                                    ) : (
-                                        <div className="w-full max-w-md bg-stone-50 p-4 rounded-xl border border-stone-200">
-                                            <h4 className="font-bold text-stone-900 mb-4 text-center">Virtual Try-On</h4>
-                                            <div className="relative aspect-[3/4] w-full rounded-lg overflow-hidden shadow-md mb-4 bg-white">
-                                                <img 
-                                                    src={visualizedImage} 
-                                                    alt="AI Generated Outfit Visualization" 
-                                                    className="w-full h-full object-cover"
-                                                />
-                                            </div>
-                                            <button 
-                                                onClick={() => setVisualizedImage(null)}
-                                                className="w-full py-2 text-sm text-stone-500 hover:text-stone-800 underline"
-                                            >
-                                                Hide Preview
-                                            </button>
-                                        </div>
-                                    )}
+                                    </div>
                                 </div>
+
+                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mb-8 w-full">
+                                    {getOutfitItems().map(item => (
+                                        <div key={item.id} className="relative group">
+                                            <div className="absolute top-2 right-2 z-10">
+                                                <button 
+                                                    onClick={() => handleRemoveFromOutfit(item.id)}
+                                                    className="p-1.5 bg-white/90 text-red-500 rounded-full shadow-sm hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                    title="Remove item"
+                                                >
+                                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                                        <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                                                    </svg>
+                                                </button>
+                                            </div>
+                                            <div className="rounded-xl overflow-hidden border border-stone-200 aspect-[3/4]">
+                                                <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
+                                            </div>
+                                            <p className="text-xs font-bold text-stone-700 mt-2 text-center truncate">{item.name || item.type}</p>
+                                        </div>
+                                    ))}
+                                    
+                                    {/* Add Item Button */}
+                                    <button 
+                                        onClick={() => setIsItemPickerOpen(true)}
+                                        className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-stone-300 text-stone-400 hover:border-indigo-400 hover:text-indigo-500 hover:bg-indigo-50/50 transition-all aspect-[3/4]"
+                                    >
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+                                        </svg>
+                                        <span className="text-sm font-semibold">Add Item</span>
+                                    </button>
+                                </div>
+
+                                {visualizedImage && (
+                                    <div className="bg-stone-900 rounded-2xl p-1 shadow-xl overflow-hidden animate-slideIn">
+                                        <div className="relative">
+                                            <img src={visualizedImage} alt="AI Visualized Outfit" className="w-full h-auto rounded-xl" />
+                                            <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/80 to-transparent p-6 pt-20">
+                                                <p className="text-white font-serif text-lg">AI Visualization</p>
+                                                <p className="text-white/70 text-sm">Note: This is an artistic approximation.</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>
                 )}
 
-                {/* TAB 3: SMART SHOP */}
+                {/* TAB 3: SHOPPING */}
                 {activeTab === 'shop' && (
                     <div className="space-y-8 animate-fadeIn pb-6">
-                         {!shoppingList ? (
+                        {!shoppingList ? (
                             <div className="text-center py-10">
                                 <div className="bg-green-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4">
                                     <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
                                     </svg>
                                 </div>
-                                <h3 className="text-xl font-serif font-bold text-stone-900 mb-2">Find Wardrobe Gaps</h3>
-                                <p className="text-stone-500 mb-6 max-w-md mx-auto">AI will identify missing key pieces that would maximize your current wardrobe's potential.</p>
+                                <h3 className="text-xl font-serif font-bold text-stone-900 mb-2">Smart Shopping List</h3>
+                                <p className="text-stone-500 mb-6 max-w-md mx-auto">Find out what key pieces are missing to maximize your wardrobe's potential.</p>
                                 <button 
                                     onClick={handleGenerateShopping}
                                     className="bg-green-600 text-white px-6 py-3 rounded-xl font-semibold shadow-lg hover:bg-green-700 transition-all"
                                 >
-                                    Analyze Gaps
+                                    Identify Gaps
                                 </button>
                             </div>
                         ) : (
-                            <div>
+                            <div className="animate-slideIn">
                                 <h3 className="text-2xl font-serif font-bold text-stone-900 mb-6">Suggested Additions</h3>
-                                <div className="space-y-4">
-                                    {shoppingList.map((item, idx) => (
-                                        <div key={idx} className="flex bg-white border border-stone-200 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
-                                            <div className="flex-shrink-0 mr-4 flex items-center justify-center w-12 h-12 bg-stone-100 rounded-full text-stone-400 font-serif font-bold text-lg">
-                                                {idx + 1}
+                                <div className="grid gap-6">
+                                    {shoppingList.map((suggestion, i) => (
+                                        <div key={i} className="flex bg-white p-5 rounded-2xl border border-stone-100 shadow-sm hover:shadow-md transition-shadow">
+                                            <div className="flex-shrink-0 mr-4">
+                                                <div className="w-12 h-12 rounded-full bg-green-50 flex items-center justify-center text-green-600 font-bold text-lg">
+                                                    {i + 1}
+                                                </div>
                                             </div>
                                             <div>
-                                                <h4 className="font-bold text-lg text-stone-900">{item.item}</h4>
-                                                <p className="text-stone-600 mt-1 text-sm leading-relaxed">{item.reasoning}</p>
+                                                <h4 className="text-lg font-bold text-stone-900 mb-1">{suggestion.item}</h4>
+                                                <p className="text-stone-600 text-sm">{suggestion.reasoning}</p>
                                             </div>
                                         </div>
                                     ))}
                                 </div>
                                 <div className="mt-8 text-center">
-                                     <button onClick={handleGenerateShopping} className="text-sm text-green-600 font-medium hover:underline">Find different items</button>
+                                    <button 
+                                        onClick={() => setShoppingList(null)}
+                                        className="text-stone-500 hover:text-stone-800 text-sm font-medium"
+                                    >
+                                        Start Over
+                                    </button>
                                 </div>
                             </div>
                         )}
                     </div>
                 )}
-
             </div>
         </div>
       </div>
